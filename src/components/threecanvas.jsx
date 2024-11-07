@@ -1,177 +1,136 @@
 'use client'
-import React, { Suspense, useRef, useState, useEffect } from 'react';
-import { useGLTF } from '@react-three/drei';
-import { OrbitControls, Stars } from '@react-three/drei';
-import { Canvas, useFrame } from '@react-three/fiber'; 
-import { useThree } from '@react-three/fiber';
-import { Physics, useBox, usePlane } from '@react-three/cannon';
+import React, { useEffect, useRef } from 'react';
+import * as THREE from 'three';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import * as CANNON from 'cannon-es';
+import Stats from 'stats.js';
+import CarComponent from './car';
 
-useGLTF.preload('/car.glb');
-
-const Car = React.forwardRef((props, ref) => {
-  const { nodes } = useGLTF('/car.glb');
-  const [carRef, api] = useBox(() => ({
-    mass: 1,
-    position: [3, 1, 0],
-    args: [2, 1.35, 1], 
-  }));
-
-  // Attach the ref for external control
-  if (ref) ref.current = { carRef, api };
-
-  return (
-    <group ref={carRef} dispose={null}>
-      {Object.keys(nodes).map((key) => (
-        <mesh
-          key={key}
-          geometry={nodes[key].geometry}
-          material={nodes[key].material}
-          scale={[0.5, 0.5, 0.5]} 
-        />
-      ))}
-    </group>
-  );
-});
-
-const CameraFollow = ({ carRef }) => {
-  const { camera } = useThree();
-  const distance = 5;
-  const height = 2;
-
-  useFrame(() => {
-    if (carRef && carRef.current && carRef.current.carRef.current) {
-      const carPosition = carRef.current.carRef.current.position;
-      camera.position.x = carPosition.x + distance;
-      camera.position.y = carPosition.y + height;
-      camera.position.z = carPosition.z;
-      camera.lookAt(carPosition);
-    }
-  });
-
-  return null;
-};
-
-const Ground = () => {
-  const [ref] = usePlane(() => ({
-    position: [0, -1, 0], 
-    rotation: [-Math.PI / 2, 0, 0],
-  }));
-
-  return (
-    <mesh ref={ref} receiveShadow>
-      <planeGeometry args={[10, 10]} />
-      <meshStandardMaterial color="green" />
-    </mesh>
-  );
-};
-
-const CarControls = ({ api }) => {
-  const [forward, setForward] = useState(false);
-  const [backward, setBackward] = useState(false);
-  const [left, setLeft] = useState(false);
-  const [right, setRight] = useState(false);
-
-  const speed = 10;
-  const turnSpeed = 0.1;
-
-  // Handle keydown and keyup for movement
-  const handleKeyDown = (e) => {
-    switch (e.key) {
-      case 'w':
-      case 'ArrowUp':
-        setForward(true);
-        break;
-      case 's':
-      case 'ArrowDown':
-        setBackward(true);
-        break;
-      case 'a':
-      case 'ArrowLeft':
-        setLeft(true);
-        break;
-      case 'd':
-      case 'ArrowRight':
-        setRight(true);
-        break;
-      default:
-        break;
-    }
-  };
-
-  const handleKeyUp = (e) => {
-    switch (e.key) {
-      case 'w':
-      case 'ArrowUp':
-        setForward(false);
-        break;
-      case 's':
-      case 'ArrowDown':
-        setBackward(false);
-        break;
-      case 'a':
-      case 'ArrowLeft':
-        setLeft(false);
-        break;
-      case 'd':
-      case 'ArrowRight':
-        setRight(false);
-        break;
-      default:
-        break;
-    }
-  };
-
-  // Apply force or torque based on key states
-  useFrame(() => {
-    if (!api) return;
-
-    if (forward) {
-      api.applyLocalForce([0, 0, -speed], [0, 0, 0]);
-    }
-    if (backward) {
-      api.applyLocalForce([0, 0, speed], [0, 0, 0]);
-    }
-    if (left) {
-      api.applyLocalTorque([0, turnSpeed, 0]);
-    }
-    if (right) {
-      api.applyLocalTorque([0, -turnSpeed, 0]);
-    }
-  });
+const ThreeCanvas = () => {
+  const canvasRef = useRef(null);
 
   useEffect(() => {
-    window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('keyup', handleKeyUp);
+    var stats = new Stats();
+    stats.showPanel(0); // 0: fps, 1: ms, 2: mb, 3+: custom
+    document.body.appendChild(stats.dom);
+
+    const canvas = canvasRef.current;
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0xFFFFFF); // Set background to white
+
+    const world = new CANNON.World({
+      gravity: new CANNON.Vec3(0, -9.82, 0), // m/s²
+    });
+    world.broadphase = new CANNON.SAPBroadphase(world);
+
+    <CarComponent scene={scene} world={world} />
+
+    const bodyMaterial = new CANNON.Material();
+    const groundMaterial = new CANNON.Material();
+    const bodyGroundContactMaterial = new CANNON.ContactMaterial(
+      bodyMaterial,
+      groundMaterial,
+      {
+        friction: 0.1,
+        restitution: 0.3
+      }
+    );
+    world.addContactMaterial(bodyGroundContactMaterial);
+
+    const dirLight = new THREE.DirectionalLight(0xF0997D, 0.8);
+    dirLight.position.set(-60, 100, -10);
+    dirLight.castShadow = true;
+    dirLight.shadow.camera.top = 50;
+    dirLight.shadow.camera.bottom = -50;
+    dirLight.shadow.camera.left = -50;
+    dirLight.shadow.camera.right = 50;
+    dirLight.shadow.camera.near = 0.1;
+    dirLight.shadow.camera.far = 200;
+    dirLight.shadow.mapSize.width = 4096;
+    dirLight.shadow.mapSize.height = 4096;
+    scene.add(dirLight);
+
+    const sizes = {
+      width: window.innerWidth,
+      height: window.innerHeight
+    };
+
+    window.addEventListener('resize', () => {
+      sizes.width = window.innerWidth;
+      sizes.height = window.innerHeight;
+
+      camera.aspect = sizes.width / sizes.height;
+      camera.updateProjectionMatrix();
+
+      renderer.setSize(sizes.width, sizes.height);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    });
+
+    const floorGeo = new THREE.PlaneGeometry(100, 100);
+    const floorMesh = new THREE.Mesh(
+      floorGeo,
+      new THREE.MeshToonMaterial({
+        color: 0x454545
+      })
+    );
+    floorMesh.rotation.x = -Math.PI * 0.5;
+    scene.add(floorMesh);
+
+    const floorS = new CANNON.Plane();
+    const floorB = new CANNON.Body();
+    floorB.mass = 0;
+
+    floorB.addShape(floorS);
+    world.addBody(floorB);
+
+    floorB.quaternion.setFromAxisAngle(
+      new CANNON.Vec3(-1, 0, 0),
+      Math.PI * 0.5
+    );
+
+    const camera = new THREE.PerspectiveCamera(50, sizes.width / sizes.height, 0.1, 10000);
+    camera.position.set(0, 4, 6);
+    scene.add(camera);
+
+    const controls = new OrbitControls(camera, canvas);
+    controls.enableDamping = true;
+
+    const renderer = new THREE.WebGLRenderer({
+      canvas: canvas
+    });
+    renderer.setSize(sizes.width, sizes.height);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+    const timeStep = 1 / 60; // seconds
+    let lastCallTime;
+
+    const tick = () => {
+      stats.begin();
+      controls.update();
+
+      const time = performance.now() / 1000; // seconds
+      if (!lastCallTime) {
+        world.step(timeStep);
+      } else {
+        const dt = time - lastCallTime;
+        world.step(timeStep, dt);
+      }
+      lastCallTime = time;
+
+      renderer.render(scene, camera);
+      stats.end();
+
+      window.requestAnimationFrame(tick);
+    };
+
+    tick();
+
     return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('keyup', handleKeyUp);
+      document.body.removeChild(stats.dom);
     };
   }, []);
 
-  return null;
-};
-
-const ThreeCanvas = () => {
-  const carRef = useRef();
-
-  return (
-    <div style={{ height: '100vh' }}>
-      <Canvas>
-        <Physics>
-          <ambientLight intensity={0.3} />
-          <directionalLight position={[10, 10, 10]} intensity={1} />
-          <Stars />
-          <OrbitControls />
-          <Suspense fallback={null}>
-            <Car ref={carRef} />
-          </Suspense>
-          <CameraFollow carRef={carRef} />
-          <Ground />
-          {carRef.current && <CarControls api={carRef.current.api} />}
-        </Physics>
-      </Canvas>
-    </div>
-  );
+  return <canvas ref={canvasRef} className="webgl"></canvas>;
 };
 
 export default ThreeCanvas;
