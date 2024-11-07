@@ -25,23 +25,24 @@ function Car() {
     const carController = (e) => {
         const cameraDirection = new Vector3();
         camera.getWorldDirection(cameraDirection);
-        switch (e.key) {
-            case 's':
-                api.applyForce([cameraDirection.x * -150, 0, cameraDirection.z * -150], [0, 0, 0]);
-                break;
-            case 'w':
-                api.applyForce([cameraDirection.x * 150, 0, cameraDirection.z * 150], [0, 0, 0]);
-                break;
-            case 'a':
-                api.applyTorque([0, 150, 0]);
-                break;
-            case 'd':
-                api.applyTorque([0, -150, 0]);
-                break;
-            default:
-                break;
+        if (e.key === 's') {
+            api.applyForce([cameraDirection.x * -150, -10, cameraDirection.z * -150], [0, 0, 0]);
+        } if (e.key === 'w') {
+            api.applyForce([cameraDirection.x * 150, -10, cameraDirection.z * 150], [0, 0, 0]);
+        } if (e.key === 'a' && (ref.current.velocity.some(v => v !== 0))) {
+            api.applyTorque([0, 100, 0]);
+        } if (e.key === 'd' && (ref.current.velocity.some(v => v !== 0))) {
+            api.applyTorque([0, -100, 0]);
         }
     };
+
+    useEffect(() => {
+        api.velocity.subscribe((velocity) => {
+            if (velocity[0] === 0 && velocity[2] === 0) {
+                api.angularVelocity.set(0, 0, 0);
+            }
+        });
+    }, [api]);
 
     React.useEffect(() => {
         window.addEventListener('keydown', carController);
@@ -49,13 +50,26 @@ function Car() {
     }, []);
 
     useEffect(() => {
-        const unsubscribe = api.position.subscribe((position) => {
+        const unsubscribePosition = api.position.subscribe((position) => {
             const carPosition = new Vector3(...position);
             ref.current.getWorldDirection(carDirection);
-            camera.position.set(carPosition.x - carDirection.x * 10, carPosition.y + 5, carPosition.z - carDirection.z * 10);
-            camera.lookAt(carPosition.x, carPosition.y, carPosition.z);
+            const targetPosition = new Vector3(
+                carPosition.x - carDirection.x * 10,
+                carPosition.y + 5,
+                carPosition.z - carDirection.z * 10
+            );
+            camera.position.lerp(targetPosition, 0.1);
+            camera.lookAt(carPosition);
         });
-        return () => unsubscribe();
+
+        const unsubscribeVelocity = api.velocity.subscribe((velocity) => {
+            ref.current.velocity = velocity;
+        });
+
+        return () => {
+            unsubscribePosition();
+            unsubscribeVelocity();
+        };
     }, [api, camera, carDirection]);
 
     return (
