@@ -28,7 +28,7 @@ npm install
 ### Run Command
 To run the project:
 ```bash
-npm install
+npm run dev
 ```
 
 ### Deploy
